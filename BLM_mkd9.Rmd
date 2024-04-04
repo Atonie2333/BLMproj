@@ -1,0 +1,1573 @@
+---
+title: "BLM_mkd9"
+author: "Xu Jianuo"
+date: "2024-03-27"
+output: 
+  pdf_document: 
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+###Data Set###
+#import player data set
+library(readxl)
+df<-read_xlsx("summary.xlsx")
+
+#Delete summary rows
+df <- df[!is.na(df$Pos) & df$Pos != "", ]
+
+#Rename Variables
+library(dplyr)
+library(lubridate)
+start_date <- ymd("2019-08-09")
+#df <- df[ , !duplicated(names(df))]
+df <- df %>%
+  rename("Blocked_Passes" = "Pass_blocked", 
+         "TklplusInt" = "Tkl+Int",
+         "Double_CrdY" = "2CrdY")
+
+df$date = as.Date(as.character(df$date), format = "%Y%m%d")
+df$Age = as.numeric(sub("-.*", "", df$Age))
+
+#Club Post Schedule
+post_schedule<-read_xlsx("post_schedule_long.xlsx")
+
+post_cum <- post_schedule %>%
+  filter(club != "Brentford") %>%
+  mutate(date = as.Date(date)) %>%
+  group_by(club) %>%
+  summarise(cum_posts = sum(post)) %>%
+  ungroup() 
+
+data <- df %>%
+  left_join(post_cum, 
+            by = c("club" = "club")
+            ) %>%
+  # Count days' difference
+  mutate(
+        after = ifelse(date >= as.Date('2020-05-25'),1,0),
+        days_diff = as.numeric(difftime(date, start_date, units = "days")),
+        week_count = as.numeric(floor(days_diff / 7) + 1),
+        douweek = as.numeric(floor(days_diff / 14) + 1),
+        triweek = as.numeric(floor(days_diff / 21) + 1),
+        monthcount = as.numeric(floor(days_diff / 30) + 1),
+        ) 
+
+# delete rows including infinity value
+data<- data[!is.na(df$CmpRa) & df$CmpRa != "", ]
+
+#Binary post equals to 1 if post greater than median, 0 otherwise.
+data <- data %>%
+  mutate(
+    median_post = median(cum_posts, na.rm = TRUE), # Calculate median, remove NA values if any
+    post_dummy = if_else(cum_posts > median_post, 1, 0),
+    post_MorL = if_else(post_dummy == 1 & after == 1, 1, 0)
+  ) %>%
+  select(-median_post) %>%# Remove the median_post column
+#Binary post equals to 1 if post greater than zero, 0 otherwise.
+  mutate(
+    TGroup = if_else(cum_posts > 0, 1, 0),#Define clubs without any posts as control group
+    post_TorC = if_else(TGroup == 1 & after == 1, 1, 0), #Define treatment happen after 5-25
+    post_Howmany = if_else(after == 1, cum_posts, 0), #Continues post as club's support intensity
+    quantile_1 = ifelse(cum_posts > 1 & after == 1, 1, 0),
+    quantile_2 = ifelse(cum_posts > 2 & after == 1, 1, 0),
+    quantile_3 = ifelse(cum_posts > 3 & after == 1, 1, 0),
+    quantile_4 = ifelse(cum_posts > 4 & after == 1, 1, 0)
+  )
+
+
+#Export descriptive statistic.
+library(stargazer)
+library(gt)
+library(psych)
+#Select Variables describe performance
+perf_subset <- data %>% 
+  select(Min:SoT) %>%
+  select(where(is.numeric))
+
+perf_subset %>%
+  describe() %>%
+  select(n, mean, sd) %>%
+  mutate(across(everything(), round, 3)) %>%
+  as.data.frame() %>%
+  rename(N = n, Mean = mean, St.Dev = sd) %>%
+  cbind(Statistic = names(perf_subset), .) %>%
+  gt() %>%
+  gtsave(filename = "Des_all.tex", 
+         path = "D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables")
+
+
+```
+```{r Categorize}
+# Identify columns with NAs
+columns_with_nas <- colSums(is.na(perf_subset)) > 0
+names(columns_with_nas)
+
+#Delete columns with NAs
+#perf_subset <- perf_subset[, !columns_with_nas]
+
+#Categorize Variables
+Pass_subset <- perf_subset %>%
+  select(Cmp:Ast, xAG:Live, TB:Crs, Blocked_Passes) 
+Pass_subset %>%
+  describe() %>%
+  select(n, mean, sd) %>%
+  mutate(across(everything(), round, 3)) %>%
+  as.data.frame() %>%
+  rename(N = n, Mean = mean, St.Dev = sd) %>%
+  cbind(Statistic = names(Pass_subset), .) %>%
+  gt(caption = "Descriptive Statistic of Passing Specifications") %>%
+  gtsave(filename = "Des_Passing.tex", 
+         path = "D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables")
+
+Dead_subset <- perf_subset %>%
+  select(TI:Corner_Str, Dead, FK)
+Dead_subset %>%
+  describe() %>%
+  select(n, mean, sd) %>%
+  mutate(across(everything(), round, 3)) %>%
+  as.data.frame() %>%
+  rename(N = n, Mean = mean, St.Dev = sd) %>%
+  cbind(Statistic = names(Dead_subset), .) %>%
+  gt(caption = "Descriptive Statistic of Dead Ball Specifications") %>%
+  gtsave(filename = "Des_Dead.tex", 
+         path = "D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables")
+
+Defend_subset <- perf_subset %>%
+  select(Tkl:Err) 
+Defend_subset %>%
+  describe() %>%
+  select(n, mean, sd) %>%
+  mutate(across(everything(), round, 3)) %>%
+  as.data.frame() %>%
+  rename(N = n, Mean = mean, St.Dev = sd) %>%
+  cbind(Statistic = names(Defend_subset), .) %>%
+  gt(caption = "Descriptive Statistic of Defensive Actions Specifications") %>%
+  gtsave(filename = "Des_Defend.tex", 
+         path = "D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables")
+
+Possession_subset <- perf_subset %>%
+  select(Touches:PrgR)
+Possession_subset %>%
+  describe() %>%
+  select(n, mean, sd) %>%
+  mutate(across(everything(), round, 3)) %>%
+  as.data.frame() %>%
+  rename(N = n, Mean = mean, St.Dev = sd) %>%
+  cbind(Statistic = names(Possession_subset), .) %>%
+  gt(caption = "Descriptive Statistic of Possessions Specifications") %>%
+  gtsave(filename = "Des_Possession.tex", 
+         path = "D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables")
+
+Shot_subset <- perf_subset %>%
+  select(npxG:SoT, xG) 
+Shot_subset %>%
+  describe() %>%
+  select(n, mean, sd) %>%
+  mutate(across(everything(), round, 3)) %>%
+  as.data.frame() %>%
+  rename(N = n, Mean = mean, St.Dev = sd) %>%
+  cbind(Statistic = names(Shot_subset), .) %>%
+  gt(caption = "Descriptive Statistic of Shot Specifications") %>%
+  gtsave(filename = "Des_Shot.tex", 
+         path = "D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables")
+
+Miscellaneous_subset <- perf_subset %>%
+  select(CrdY:Lost)
+
+##Filter variables whose correlation with others are correlated.
+#Correlation Matrix
+corrmatrix_Passing <- cor(Pass_subset)
+corrmatrix_Dead <- cor(Dead_subset)
+corrmatrix_Possession <- cor(Possession_subset)
+corrmatrix_Shot <- cor(Shot_subset)
+corrmatrix_Defend <- cor(Defend_subset)
+corrmatrix_Miscellaneous <- cor(Miscellaneous_subset)
+# Find the columns where at least have one corr significant and greater than 0.5.
+#Define filter function as conditions.
+
+find_significant_correlations <- function(cor_matrix) {
+  p_values <- corr.test(cor_matrix)$p
+  significant_cols <- colnames(cor_matrix)[apply(p_values < 0.01, 1, any)]
+  return(significant_cols)
+}
+
+find_highCorColumns <- function(cor_matrix) {
+  highCorColumns <- apply(cor_matrix, 2, function(x) any(abs(x) > 0.5 & abs(x) < 1 & !is.na(x)))
+  colnames(cor_matrix)[highCorColumns]
+}
+  #Function to filter columns at least have one corr significant and greater than 0.5.
+find_corr_cols <- function(df) {
+  cor_matrix <- cor(df)
+  
+  # Find cols significant
+  significant_cols <- find_significant_correlations(cor_matrix)
+  
+  # Find cols with corr greater than 0.5
+  highCor_columns <- find_highCorColumns(cor_matrix)
+  
+  # Find cols fit both conditions.
+  high_corr_significant_cols <- intersect(significant_cols, highCor_columns)
+  
+  return(high_corr_significant_cols)
+}
+
+#Create a list including all subsets
+subset_list <- list(Pass_subset, Dead_subset, Possession_subset, 
+                  Shot_subset, Defend_subset, Miscellaneous_subset)
+
+# Apply the function on each subset
+Selected_list <- lapply(subset_list, find_corr_cols)
+
+#Correlation Plot
+
+gr <- colorRampPalette(c( "#F3C846", "white", "#4A7298"))
+
+pdf("plots/Corrplot_Passing.pdf", width = 12,
+    title = "Correlation Plot of Passing Specifications")
+Corrplot_Passing <- perf_subset %>% 
+  select(all_of(Selected_list[[1]])) %>%
+  cor.plot(
+    stars = T,
+    cex = 0.75,
+    gr = gr,
+    upper = F,
+    main = "Correlation Plot of Passing Specifications"
+  )
+dev.off()
+
+pdf("plots/Corrplot_Dead.pdf", width = 12,
+    title = "Correlation Plot of Dead Ball Specifications")
+Corrplot_Dead <- perf_subset %>% 
+  select(all_of(Selected_list[[2]])) %>%
+  cor.plot(
+    stars = T,
+    cex = 1,
+    gr = gr,
+    upper = F,
+    main = "Correlation Plot of Dead Ball Specifications"
+  )
+dev.off()
+
+pdf("plots/Corrplot_Defend.pdf", width = 12,
+    title = "Correlation Plot of Defensive Action Specifications")
+Corrplot_Defend <- perf_subset %>% 
+  select(all_of(Selected_list[[5]])) %>%
+  cor.plot(
+    stars = T,
+    cex = 1,
+    gr = gr,
+    upper = F,
+    main = "Correlation Plot of Defensive Action Specifications"
+  )
+dev.off()
+
+pdf("plots/Corrplot_Possession.pdf", width = 12,
+    title = "Correlation Plot of Possession Specifications")
+Corrplot_Possession <- perf_subset %>% 
+  select(all_of(Selected_list[[3]])) %>%
+  cor.plot(
+    stars = T,
+    cex = 0.75,
+    gr = gr,
+    upper = F,
+    main = "Correlation Plot of Possession Specifications"
+  )
+dev.off()
+
+pdf("plots/Corrplot_Miscellaneous.pdf", width = 12, 
+    title = "Correlation Plot of Miscellaneous Specifications")
+Corrplot_Miscellaneous <- perf_subset %>% 
+  select(all_of(Selected_list[[6]])) %>%
+  cor.plot(
+    stars = T,
+    cex = 1, 
+    gr = gr,
+    upper = F,
+    main = "Correlation Plot of Miscellaneous Specifications"
+  )
+
+dev.off()
+
+pdf("plots/Corrplot_Shot.pdf", width = 12,
+    title = "Correlation Plot of Shot Specifications")
+corrplot_Shot <- perf_subset %>% 
+  select(all_of(Selected_list[[4]])) %>%
+  cor.plot(
+    stars = T,
+    cex = 1,
+    gr = gr,
+    upper = F,
+    main = "Correlation Plot of Shot Specifications"
+  )
+dev.off()
+
+
+```
+```{r Robust}
+##DiD Analysis##
+library(lfe)
+library(gtsummary)
+library(broom)
+library(xtable)
+#Linear
+  #Passing Section
+Passing_Results <- data.frame(Dependent_Variable = character(),
+                              Coefficient = numeric(),
+                              Signif.level = character(),
+                              SE = numeric(),
+                              R2 = numeric(),
+                              Obs = numeric(),
+                              stringsAsFactors = FALSE)
+
+for (y in names(Pass_subset)) {
+  formula <- as.formula(paste(y, "~ post_Howmany | Player + after"))
+  model <- felm(formula, data = data)
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.01, "***", 
+                  ifelse(pvalues<0.05, "**", 
+                         ifelse(pvalues<0.1, "*", "")))
+
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    R2 = result$r.squared,
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Passing_Results <- rbind(Passing_Results, row)
+}
+print(xtable(Passing_Results), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(Passing_Results)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/Passing_Results.tex",
+      type="latex")
+#Possession Section
+Possession_Results <- data.frame(Dependent_Variable = character(),
+                              Coefficient = numeric(),
+                              Signif.level = character(),
+                              SE = numeric(),
+                              R2 = numeric(),
+                              Obs = numeric(),
+                              stringsAsFactors = FALSE)
+
+for (y in names(Possession_subset)) {
+  formula <- as.formula(paste(y, "~ post_Howmany | Player + after"))
+  model <- felm(formula, data = data)
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    R2 = result$r.squared,
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Possession_Results <- rbind(Possession_Results, row)
+}
+print(xtable(Possession_Results), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(Possession_Results)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/Possession_Results.tex",
+      type="latex")
+#Defend Section
+Defend_Results <- data.frame(Dependent_Variable = character(),
+                                 Coefficient = numeric(),
+                             Signif.level = character(),
+                                 SE = numeric(),
+                                 R2 = numeric(),
+                                 Obs = numeric(),
+                                 stringsAsFactors = FALSE)
+
+for (y in names(Defend_subset)) {
+  formula <- as.formula(paste(y, "~ post_Howmany | Player + after"))
+  model <- felm(formula, data = data)
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    R2 = result$r.squared,
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Defend_Results <- rbind(Defend_Results, row)
+}
+print(xtable(Defend_Results), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(Defend_Results)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/Defend_Results.tex",
+      type="latex")
+#Shot Section
+Shot_Results <- data.frame(Dependent_Variable = character(),
+                                 Coefficient = numeric(),
+                           Signif.level = character(),
+                                 SE = numeric(),
+                                 R2 = numeric(),
+                                 Obs = numeric(),
+                                 stringsAsFactors = FALSE)
+
+for (y in names(Shot_subset)) {
+  formula <- as.formula(paste(y, "~ post_Howmany | Player + after"))
+  model <- felm(formula, data = data)
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    R2 = result$r.squared,
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Shot_Results <- rbind(Shot_Results, row)
+}
+#Export results into LaTex
+print(xtable(Shot_Results), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(Shot_Results)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/Shot_Results.tex",
+      type="latex")
+#Dead Section
+Dead_Results <- data.frame(Dependent_Variable = character(),
+                                 Coefficient = numeric(),
+                           Signif.level = character(),
+                                 SE = numeric(),
+                                 R2 = numeric(),
+                                 Obs = numeric(),
+                                 stringsAsFactors = FALSE)
+
+for (y in names(Dead_subset)) {
+  formula <- as.formula(paste(y, "~ post_Howmany | Player + after"))
+  model <- felm(formula, data = data)
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    R2 = result$r.squared,
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Dead_Results <- rbind(Dead_Results, row)
+}
+print(xtable(Dead_Results), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(Dead_Results)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/Dead_Results.tex",
+      type="latex")
+
+#Miscellaneous Section
+Miscellaneous_Results <- data.frame(Dependent_Variable = character(),
+                           Coefficient = numeric(),
+                           Signif.level = character(),
+                           SE = numeric(),
+                           R2 = numeric(),
+                           Obs = numeric(),
+                           stringsAsFactors = FALSE)
+
+for (y in names(Miscellaneous_subset)) {
+  formula <- as.formula(paste(y, "~ post_Howmany | Player + after"))
+  model <- felm(formula, data = data)
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    R2 = result$r.squared,
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Miscellaneous_Results <- rbind(Miscellaneous_Results, row)
+}
+print(xtable(Miscellaneous_Results), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(Miscellaneous_Results)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/Miscellaneous_Results.tex",
+      type="latex")
+
+
+```
+```{r PCA}
+##Principle Components Analysis (PCA)##
+library(ggplot2)
+
+#Passing Section
+pr.out_Passing <- perf_subset %>% 
+  select(all_of(Selected_list[[1]])) %>%
+  prcomp (scale. = T)
+#plot PCA result
+biplot(pr.out_Passing, scale = 0)
+
+#Plot PVE explained by each component
+pr.var_Passing <- pr.out_Passing$sdev^2
+pve_Passing <- pr.var_Passing/sum(pr.var_Passing)
+pdf("plots/PCA_Passing.pdf", width = 12, title = "PCA_Passing")
+par(mfrow = c(1,2))
+PVE_Passing <- plot(pve_Passing, 
+                    xlab = "Principal Component", 
+                    ylab = "Propotion of Variance Explained", 
+                    ylim = c(0, 1), 
+                    type = "b"
+                    )
+Cum_PVE_Passing <- plot(cumsum(pve_Passing), 
+                xlab = "Principal Component", 
+                ylab = "Cumulative Propotion of Variance Explained", 
+                ylim = c(0, 1), 
+                type = "b")
+dev.off()
+
+#Dead Ball Section
+pr.out_Dead <- perf_subset %>% 
+  select(all_of(Selected_list[[2]])) %>%
+  prcomp (scale. = T)
+#plot PCA result
+biplot(pr.out_Dead, scale = 0)
+
+#Plot PVE explained by each component
+pr.var_Dead <- pr.out_Dead$sdev^2
+pve_Dead <- pr.var_Dead/sum(pr.var_Dead)
+pdf("plots/PCA_Dead.pdf", width = 12, title = "PCA_Dead")
+par(mfrow = c(1,2))
+PVE_Dead <- plot(pve_Dead, 
+                    xlab = "Principal Component", 
+                    ylab = "Propotion of Variance Explained", 
+                    ylim = c(0, 1), 
+                    type = "b"
+)
+Cum_PVE_Dead <- plot(cumsum(pve_Dead), 
+                        xlab = "Principal Component", 
+                        ylab = "Cumulative Propotion of Variance Explained", 
+                        ylim = c(0, 1), 
+                        type = "b")
+dev.off()
+pr.out_Possession <- perf_subset %>% 
+  select(all_of(Selected_list[[3]])) %>%
+  prcomp (scale. = T)
+#plot PCA result
+biplot(pr.out_Possession, scale = 0)
+
+#Plot PVE explained by each component
+pr.var_Possession <- pr.out_Possession$sdev^2
+pve_Possession <- pr.var_Possession/sum(pr.var_Possession)
+pdf("plots/PCA_Possession.pdf", width = 12, title = "PCA_Possession")
+par(mfrow = c(1,2))
+PVE_Possession <- plot(pve_Possession, 
+                    xlab = "Principal Component", 
+                    ylab = "Propotion of Variance Explained", 
+                    ylim = c(0, 1), 
+                    type = "b"
+)
+Cum_PVE_Possession <- plot(cumsum(pve_Possession), 
+                        xlab = "Principal Component", 
+                        ylab = "Cumulative Propotion of Variance Explained", 
+                        ylim = c(0, 1), 
+                        type = "b")
+dev.off()
+
+pr.out_Defend <- perf_subset %>% 
+  select(all_of(Selected_list[[5]])) %>%
+  prcomp (scale. = T)
+#plot PCA result
+biplot(pr.out_Defend, scale = 0)
+
+#Plot PVE explained by each component
+pr.var_Defend <- pr.out_Defend$sdev^2
+pve_Defend <- pr.var_Defend/sum(pr.var_Defend)
+pdf("plots/PCA_Defend.pdf", width = 12, title = "PCA_Defend")
+par(mfrow = c(1,2))
+PVE_Defend <- plot(pve_Defend, 
+                    xlab = "Principal Component", 
+                    ylab = "Propotion of Variance Explained", 
+                    ylim = c(0, 1), 
+                    type = "b"
+)
+Cum_PVE_Defend <- plot(cumsum(pve_Defend), 
+                        xlab = "Principal Component", 
+                        ylab = "Cumulative Propotion of Variance Explained", 
+                        ylim = c(0, 1), 
+                        type = "b")
+dev.off()
+
+pr.out_Shot <- perf_subset %>% 
+  select(all_of(Selected_list[[4]])) %>%
+  prcomp (scale. = T)
+#plot PCA result
+biplot(pr.out_Shot, scale = 0)
+
+#Plot PVE explained by each component
+pr.var_Shot <- pr.out_Shot$sdev^2
+pve_Shot <- pr.var_Shot/sum(pr.var_Shot)
+pdf("plots/PCA_Shot.pdf", width = 12, title = "PCA_Shot")
+par(mfrow = c(1,2))
+PVE_Shot <- plot(pve_Shot, 
+                    xlab = "Principal Component", 
+                    ylab = "Propotion of Variance Explained", 
+                    ylim = c(0, 1), 
+                    type = "b"
+)
+Cum_PVE_Shot <- plot(cumsum(pve_Shot), 
+                        xlab = "Principal Component", 
+                        ylab = "Cumulative Propotion of Variance Explained", 
+                        ylim = c(0, 1), 
+                        type = "b")
+dev.off()
+
+pr.out_Miscellaneous <- perf_subset %>% 
+  select(all_of(Selected_list[[6]])) %>%
+  prcomp (scale. = T)
+#plot PCA result
+biplot(pr.out_Miscellaneous, scale = 0)
+
+#Plot PVE explained by each component
+pr.var_Miscellaneous <- pr.out_Miscellaneous$sdev^2
+pve_Miscellaneous <- pr.var_Miscellaneous/sum(pr.var_Miscellaneous)
+pdf("plots/PCA_Miscellaneous.pdf", width = 12, title = "PCA_Miscellaneous")
+par(mfrow = c(1,2))
+PVE_Miscellaneous <- plot(pve_Miscellaneous, 
+                    xlab = "Principal Component", 
+                    ylab = "Propotion of Variance Explained", 
+                    ylim = c(0, 1), 
+                    type = "b"
+)
+Cum_PVE_Miscellaneous <- plot(cumsum(pve_Miscellaneous), 
+                        xlab = "Principal Component", 
+                        ylab = "Cumulative Propotion of Variance Explained", 
+                        ylim = c(0, 1), 
+                        type = "b")
+dev.off()
+#Regression with PCs.
+pr.out_Passing$x <- pr.out_Passing$x %>%
+  as.data.frame() %>%
+  rename("Passing_PC1" = "PC1", 
+         "Passing_PC2" = "PC2",
+         "Passing_PC3" = "PC3" )
+pr.out_Dead$x <- pr.out_Dead$x %>%
+  as.data.frame() %>%
+  rename("Dead_PC1" = "PC1", 
+         "Dead_PC2" = "PC2",
+         "Dead_PC3" = "PC3" )
+pr.out_Possession$x <- pr.out_Possession$x %>%
+  as.data.frame() %>%
+  rename("Possession_PC1" = "PC1", 
+         "Possession_PC2" = "PC2",
+         "Possession_PC3" = "PC3" )
+pr.out_Shot$x <- pr.out_Shot$x %>%
+  as.data.frame() %>%
+  rename("Shot_PC1" = "PC1", 
+         "Shot_PC2" = "PC2",
+         "Shot_PC3" = "PC3" )
+pr.out_Defend$x <- pr.out_Defend$x %>%
+  as.data.frame() %>%
+  rename("Defend_PC1" = "PC1", 
+         "Defend_PC2" = "PC2",
+         "Defend_PC3" = "PC3" )
+PC.data <- data %>%
+  cbind(pr.out_Passing$x[ ,1:3], pr.out_Dead$x[ ,1:3], pr.out_Possession$x[ ,1:3],
+        pr.out_Shot$x[ ,1:3], pr.out_Defend$x[ ,1:3]
+  )
+
+
+#Regression with PCs' key variables. 
+PCs.kv <- c(which.max(abs(pr.out_Passing$rotation[, "PC1"])),
+which.max(abs(pr.out_Passing$rotation[, "PC2"])),
+which.max(abs(pr.out_Passing$rotation[, "PC3"])),
+which.max(abs(pr.out_Dead$rotation[, "PC1"])),
+which.max(abs(pr.out_Dead$rotation[, "PC2"])),
+which.max(abs(pr.out_Dead$rotation[, "PC3"])),
+which.max(abs(pr.out_Possession$rotation[, "PC1"])),
+which.max(abs(pr.out_Possession$rotation[, "PC2"])),
+which.max(abs(pr.out_Possession$rotation[, "PC3"])),
+which.max(abs(pr.out_Defend$rotation[, "PC1"])),
+which.max(abs(pr.out_Defend$rotation[, "PC2"])),
+which.max(abs(pr.out_Defend$rotation[, "PC3"])),
+which.max(abs(pr.out_Shot$rotation[, "PC1"])),
+which.max(abs(pr.out_Shot$rotation[, "PC2"])),
+which.max(abs(pr.out_Shot$rotation[, "PC3"]))
+)
+PCs.kv
+
+PCs.kv_Results <- data.frame(Dependent_Variable = character(),
+                                    Coefficient = numeric(),
+                                    Signif.level = character(),
+                                    SE = numeric(),
+                                    R2 = numeric(),
+                                    Obs = numeric(),
+                                    stringsAsFactors = FALSE)
+
+for (y in c(names(PC.data[, 114:116]),
+            "PassAtt", "KP", "PassAtt_long", 
+            names(PC.data[, 117:119]),
+             "CK", "TI", "FK",
+            names(PC.data[, 120:122]),
+             "Carries_TotDist", "Touches_Def_3rd", "Touches_DefPen",
+            names(PC.data[, 123:125]),
+            "Tkl", "Blocks", "Challenges_Lost",
+            names(PC.data[, 126:128]),
+             "xG", "PK", "Gls")) 
+  {
+  formula <- as.formula(paste(y, "~ post_Howmany | Player + after"))  
+  model <- felm(formula, data = PC.data)
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    R2 = result$r.squared,
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  PCs.kv_Results <- rbind(PCs.kv_Results, row)
+}
+print(xtable(PCs.kv_Results), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(PCs.kv_Results)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/PCs.kv_Results.tex",
+      type="latex")
+
+
+
+
+
+```
+
+```{r Playerhetero}
+##Player Hetero##
+#Import club status
+club_status <- read_xlsx("club_status(1).xlsx")
+cols_to_remove <- c("SDLP","GRN", "PLC", "SNP", "LDM", "ALL", "IND", "DUP", "sdlp", "plc", "all", "ind", "dup")
+club_status_nonzero <- club_status[, !names(club_status) %in% cols_to_remove]
+#Classify eu countries
+eu_countries <- c("AUT", "BEL", "BGR", "HRV", "CYP", "CZE", "DNK", "EST", "FIN",
+                  "FRA", "DEU", "GRC", "HUN", "IRL", "ITA", "LVA", "LTU", "LUX",
+                  "MLT", "NLD", "POL", "PRT", "ROU", "SVK", "SVN", "ESP", "SWE")
+
+#Define classification function
+classify_position <- function(position){
+  if(grepl("FW|LW|RW|AM", position)){
+    return("Forward")
+  } else if(grepl("CM|LM|RM|DM", position)){
+    return("Middle")
+  } else {
+    return("Back")
+  }
+}
+
+#Add variables
+hetero_data <- PC.data %>%
+  left_join(club_status_nonzero, by = "club", relationship = "many-to-many") %>%
+  #Add nation variable equal to 1 if nation is England, 0 otherwise
+  mutate(eng = ifelse(Nation == "eng ENG",1,0),
+         is_eu = ifelse(sapply(strsplit(as.character(Nation), " "), `[`, 2) %in% eu_countries, 1, 0),
+         Position_Category = sapply(Pos, classify_position),
+         Position_dummy = model.matrix(~as.factor(Position_Category) - 1, data))
+# Explore hetero across is England player.
+Position_1 <- data.frame(Dependent_Variable = character(),
+                            Coefficient = numeric(),
+                            Signif.level = character(),
+                            SE = numeric(),
+                            Obs = numeric(),
+                            stringsAsFactors = FALSE)
+#Explore hetero across is EU.
+for (y in c(names(Pass_subset), names(Possession_subset))) {
+  formula <- as.formula(paste(y, "~ post_Howmany*Position_dummy| Player + after"))  
+  model <- felm(formula, data = hetero_data)
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Position_1 <- rbind(Position_1, row)
+}
+
+print(xtable(Position_1), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(Position_1)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/Eng.tex",
+      type="latex")
+
+# Explore hetero across is England player.
+Eng_Results_1 <- data.frame(Dependent_Variable = character(),
+                              Coefficient = numeric(),
+                              Signif.level = character(),
+                              SE = numeric(),
+                              Obs = numeric(),
+                              stringsAsFactors = FALSE)
+#Explore hetero across is EU.
+for (y in c(names(Pass_subset), names(Possession_subset))) {
+  formula <- as.formula(paste(y, "~ post_Howmany| Player + after"))  
+  model <- felm(formula, data = hetero_data %>% filter(eng == 1))
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Eng_Results_1 <- rbind(Eng_Results_1, row)
+}
+#Non-England Players
+Eng_Results_0 <- data.frame(
+  Coefficient = numeric(),
+  Signif.level = character(),
+  SE = numeric(),
+  Obs = numeric(),
+  stringsAsFactors = FALSE)
+#Add a intersection term to divide Eng players and non-Eng players
+for (y in c(names(Pass_subset), names(Possession_subset))) {
+  formula <- as.formula(paste(y, "~ post_Howmany| Player + after"))  
+  model <- felm(formula, data = hetero_data %>% filter(eng == 0))
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+  row <- data.frame(
+    Coefficient = coef(model),
+    Signif.level = stars,
+    SE = sqrt(diag(vcov(model))),
+    Obs = length(model$residuals),
+    stringsAsFactors = FALSE)
+  
+  Eng_Results_0 <- rbind(Eng_Results_0, row)
+}
+
+print(xtable(cbind(Eng_Results_1, Eng_Results_0)), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(Eng_Results_0)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/Eng.tex",
+      type="latex")
+
+# Explore hetero across is EU player.
+EU_Results_1 <- data.frame(Dependent_Variable = character(),
+                            Coefficient = numeric(),
+                            Signif.level = character(),
+                            SE = numeric(),
+                            Obs = numeric(),
+                            stringsAsFactors = FALSE)
+#Explore hetero across is_eu.
+for (y in c(names(Pass_subset), names(Possession_subset))) {
+  formula <- as.formula(paste(y, "~ post_Howmany | Player + after"))  
+  model <- felm(formula, data = hetero_data %>% filter(is_eu == 1))
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  EU_Results_1 <- rbind(EU_Results_1, row)
+}
+#Non-EU Players
+EU_Results_0 <- data.frame(
+  Coefficient = numeric(),
+  Signif.level = character(),
+  SE = numeric(),
+  Obs = numeric(),
+  stringsAsFactors = FALSE)
+#Add a intersection term to divide EU players and non-EU players
+for (y in c(names(Pass_subset), names(Possession_subset))) {
+  formula <- as.formula(paste(y, "~ post_Howmany | Player + after"))  
+  model <- felm(formula, data = hetero_data %>% filter(is_eu == 0))
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+  row <- data.frame(
+    Coefficient = coef(model),
+    Signif.level = stars,
+    SE = sqrt(diag(vcov(model))),
+    Obs = length(model$residuals),
+    stringsAsFactors = FALSE)
+  
+  EU_Results_0 <- rbind(EU_Results_0, row)
+}
+
+print(xtable(cbind(EU_Results_1, EU_Results_0)), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(EU_Results_0)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/EU.tex",
+      type="latex")
+
+#Define blackplayers
+blackplayers<-c("Tammy Abraham","Ché Adams","Tosin Adarabioyo", "Dennis Adeniran",
+                "Albert Adomah", "Benik Afobe","Daniel Agyei","Ahmed El Mohamady",
+                "Ali Koiki", "Ola Aina","Nathan Aké", "Michail Antonio", 
+                "Ibrahim Amadou","Daniel Amartey","Joseph Anang","Tino Anjorin", 
+                "Benny Ashley-Seal","Christian Atsu","Sérge Aurier",
+                "Pierre -Emerick Auvameyang","Taiwo Awoniyi",
+                "Jordan Ayew","Abdul Baba","Eric Bailly","Tiémoué Bakayoko",
+                "Folarin Balogun","Beni Baningime","Calvin Bassey",
+                "Michy Batshuayi","Gavin Bazunu","Benjamin Mendy","Jayden Bennettes",
+                "Christian Benteke","Steven Bergwijn","Bernardo",
+                "Ryan Bertrand", "Philip Billing","Yves Bissouma","Joshua Bohui",
+                "Tolaji Bola","Yannick Bolasie","Willy-Arnaud Boly","Gaëtan Bong",
+                "Sofiane Boufal","Rhian Brewster","Isaiah Brown",
+                "Vontae Campbell","Étienne Capoue", "Dominic Calvert-Lewin",
+                "Cameron Carter-Vickers","Trevoh Chalobah", "Tahith Chong",
+                "Hamza Choudhury","Nathaniel Clyne", "Jermain Defoe",
+                "Danilo","Arnaut Danjuma","Kevin Danso","Keinan Davis",
+                "Tom Dele-Bashiru","Fabian Delph","Jason Denayer",
+                "Mousa Demlélé","Fousseni Diabaté","Mohamed Diamé", "Grady Diangna",
+                "Alpha Dionkou","Issa Diop","Moussa Djenepo",
+                "Domingos Quina","Abdoulayes Doucouré","Douglas Luiz","Ovie Ejaria",
+                "Emerson","Niall Ennis","Bright Enobakhare","Timothy Eyoma",
+                "Fabinho","Malachi Fagan-Walcott","Edimilson Fernandes","Fernandinho",
+                "Timothy Fosu-Mensah","Dimitri Foulquier","Fred","Jean-Philippe Gbamin",
+                "Gedson Fernandes","Morgan Gibbs-White","Ben Godfrey","Claudio Gomes",
+                "Joe Gomez","John-Kymani Gordon","Lee Grant","Demariai Gray",
+                "Andre Green","Mason Greenwood","Marc Guéhi","Idrissa Gueye",
+                "Sébastien Haller","Kortney Hause","Kaine Hayden","Michael Hector",
+                "Hélder Costa", "Rushian Hepburn-Murphy","Onel Hernández","Mason Holgate",
+                "Callum Hudson-Odoi","Cameron Humphreys","Joseph Hungbo","Jordon Ibe",
+                "Adam Idah","Odion Ighalo","Kelechi Iheanacho","Ivan Cavaleiro",
+                "Alex Iwobi","José Izquierdo","Jacob Murphy","Reece James",
+                "Alexandre Jankewitz", "João Pedro","Joelinton","Darnell Johnson",
+                "Christian Kabasele","Yones Kaboul","Sullay Kaikai","N'Golo Kanté",
+                "Moise Kean","Naby Keïta", "James Justin", "Cheikhou Kouyaté",
+                "Lloyd Kelly","Joshua King","Nya Kirby","Anthony Knockaert",
+                "Jonathan Kodjia","Vincent Kompany","Ezri Konsa","Billy Koumetio",
+                "Alexandre Lacazette","Ethan Laird","Taria Lamptey","Yasser Larouci",
+                "Jamaal Lascelles","Achraf Lazaar","Valentino Lazaro","Moritz Leitner",
+                "Mario Lemina", "Romelu Lukaku", "Pablo Marí","Adrian Mariappa",
+                "Jefferson Lerma","Thakgalo Leshabela","Jesse Lingard","Jürgen Locadia",
+                "Ruben Loftus-Cheek","Ademola Lookman","Louis Thompson","Lucas Moura",
+                "Dodi Lukébakio","Brooklyn Lyons-Foster","Ian Maatsen","Jacob Maddox",
+                "Riyad Mahrez","Ainsley Maitland-Niles","Sadio Mané","Eliaquim Mangala",
+                "Anthony Martial","Cuco Martina","Arthur Masuaku","Joël Matip",
+                "David McGoldrick","D'Mani Mellor","Nampalys Mendy","Teden Mengi",
+                "Yerry Mina","Tyrone Ming", "Dominic Revan","Ricardo Pereira",
+                "Tyrick Mitchell","Mohamed Salah","Wes Morgan","Victor Moses",
+                "Joel Mumbongo","Marvelous Nakamba","Wilfred Ndidi",
+                "Tanguy Ndombélé","Reiss Nelson","Jeremy Ngakia",
+                "Oumar Niasse","Eddie Nketiah","Georges-Kévin Nkoudou",
+                "Danel Nlundulu","Felix Nmecha","Michael Obafemi","Nnamdi Ofoborh",
+                "Angelo Ogbonna","Sheyi Ojo","Stefano Okaka",
+                "Josh Onomah","Divock Origi","Owen Otasowie","Reece Oxford",
+                "Kasey Palmer","Pedro Obiang","Terell Pennant","Nicolas Pépé",
+                "Brandon Pierrick","Paul Pogba","Pedro Porro", "Callum Wilson",
+                "Jason Puncheon","Rafael Camacho","Largie Ramazani","Kayne Ramsay",
+                "Darren Randolph","Marcus Rashford","Nathan Redmond","Winston Reid",
+                "Taylor Richards","Richarlison","Jairo Riedewald","Roberto Firmino",
+                "Callum Robinson","Roderick Miranda","Salomón Rondón","Danny Rose",
+                "Antonio Antonio Rüdiger","Allan Saint-Maximin", "Xande Silva",
+                "Henri Saivet","Bukayo Saka","Mamadou Sakho","Bakary Sako",
+                "William Saliba","Mbwana Samatta","Austin Samuels","Robert Sánchez",
+                "Dion Sanderson","Leroy Sané","Philippe Sandler",
+                "Ismaïla Sarr","Christian Saydee","Jeffrey Schlupp","Ken Sema",
+                "Ryan Sessegnon","Djibril Sidibé","Sidnei Tavares","Ellis Simms",
+                "Jerome Sinclair","Moussa Sissoko","Pape Souaré","Bayli Spencer-Adams",
+                "Jack Spong","Junior Stanislas","Zack Steffen","Dujon Sterling",
+                "Daniel Sturridge","Isaac Success","Japhet Tanganga","Percy Tau",
+                "Neil Taylor","Nathan Tella","Alexander Tettey",
+                "Dominic Thompson","Youri Tielemans","Timi Odusina","Fikayo Tomori",
+                "Cenk Tosun","Andros Townsend","Adama Traoré","Nathan Trott",
+                "Axel Tuanzebe","Antonio Valencia","Yan Valery","Patrick van Aanholt",
+                "Virgil van Dijk","Theo Walcott","Kyle Walker-Peters",
+                "Aaron Wan-Bissaka","Victor Wanyama","Danny Welbeck","Wesley",
+                "Georginio Wijnaldum","Jetro Willems","Willan","Joe Willock",
+                "Romaric Yapi","DeAndre Yedlin","Ashley Young","Wifried Zaha",
+                "Marvin Zeegelaar","Jordan Zemura","Kurt Zouma"
+)
+na_race<-c("Brennan Camp","Leonardo Campana","Samir Carruthers","Kane Crichlow",
+           "Andrew Crofts","Renat Dadashov","Sam Dalby","James Daly",
+           "Jake Doyle-Hayes","Anwar EI Ghazi", "Mikkel Diskerud",
+           "Akin Famewo","Will Ferry","Flávio Cristóvão","Marcel Franke",
+           "Brooklyn Genesini","Paul Gladon","Paul Glatzel","Joseph Hardy",
+           "Nathan Harker","Ben Heneghan","Kaylen Hinds","Rob Holding",
+           "Ricky Holmes","Nathaniel Shio Hong Wan","Lukas Jensen",
+           "Tyreece John-Jules","George Johnston","Soufyan Ahannach","Allan",
+           "Billy Arce","Antonio Barreca","Mason barrett","Nathan Baxter",
+           "Bernardo Rosa","Luke Bolton","Rocky Bushiri","Jack Bycrofy")
+hetero_data$blackplayer <- as.integer(data$Player %in% blackplayers)
+hetero_data$blackplayer[data$Player %in% na_race] <- NA
+
+# Explore hetero across is Blackplayer.
+Black_Results_1 <- data.frame(Dependent_Variable = character(),
+                            Coefficient = numeric(),
+                            Signif.level = character(),
+                            SE = numeric(),
+                            Obs = numeric(),
+                            stringsAsFactors = FALSE)
+#Add a intersection term to divide Black players and non-Black players
+for (y in c(names(Pass_subset), names(Possession_subset))) {
+  formula <- as.formula(paste(y, "~ post_Howmany| Player + after"))  
+  model <- felm(formula, data = hetero_data %>% filter(blackplayer == 1))
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Black_Results_1 <- rbind(Black_Results_1, row)
+}
+#Non-Black Players
+Black_Results_0 <- data.frame(
+  Coefficient = numeric(),
+  Signif.level = character(),
+  SE = numeric(),
+  Obs = numeric(),
+  stringsAsFactors = FALSE)
+#Add a intersection term to divide Black players and non-Black players
+for (y in c(names(Pass_subset), names(Possession_subset))) {
+  formula <- as.formula(paste(y, "~ post_Howmany| Player + after"))  
+  model <- felm(formula, data = hetero_data %>% filter(blackplayer == 0))
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+  row <- data.frame(
+    Coefficient = coef(model),
+    Signif.level = stars,
+    SE = sqrt(diag(vcov(model))),
+    Obs = length(model$residuals),
+    stringsAsFactors = FALSE)
+  
+  Black_Results_0 <- rbind(Black_Results_0, row)
+}
+
+print(xtable(cbind(Black_Results_1, Black_Results_0)), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(Black_Results_0)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/Black.tex",
+      type="latex")
+
+
+```
+```{r ClubHetero}
+##Club Heterogeneity##
+
+#Heterogeneity between CON and LAB.
+# Explore hetero across is CON club.
+CON_Results_1 <- data.frame(Dependent_Variable = character(),
+                              Coefficient = numeric(),
+                              Signif.level = character(),
+                              SE = numeric(),
+                              Obs = numeric(),
+                              stringsAsFactors = FALSE)
+#Add a intersection term to divide CON players and non-CON players
+for (y in c(names(Pass_subset), names(Possession_subset))) {
+  formula <- as.formula(paste(y, "~ post_Howmany| Player + after"))  
+  model <- felm(formula, data = hetero_data %>% filter(CON == 1))
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  CON_Results_1 <- rbind(CON_Results_1, row)
+}
+#Non-CON Clubs
+CON_Results_0 <- data.frame(
+  Coefficient = numeric(),
+  Signif.level = character(),
+  SE = numeric(),
+  Obs = numeric(),
+  stringsAsFactors = FALSE)
+#Add a intersection term to divide CON clubs and non-CON clubs
+for (y in c(names(Pass_subset), names(Possession_subset))) {
+  formula <- as.formula(paste(y, "~ post_Howmany| Player + after"))  
+  model <- felm(formula, data = hetero_data %>% filter(CON == 0))
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+  row <- data.frame(
+    Coefficient = coef(model),
+    Signif.level = stars,
+    SE = sqrt(diag(vcov(model))),
+    Obs = length(model$residuals),
+    stringsAsFactors = FALSE)
+  
+  CON_Results_0 <- rbind(CON_Results_0, row)
+}
+
+print(xtable(cbind(CON_Results_1, CON_Results_0)), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(CON_Results_0)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/CON.tex",
+      type="latex")
+
+# Explore hetero across is con club on Passing specifications.
+con_Results_Passing <- data.frame(
+  Dependent_Variable = character(),
+  `BLMpost*con` = numeric(),
+  Signif.level = character(),
+  SE = numeric(),
+  Obs = numeric(),
+  stringsAsFactors = FALSE)
+
+for (y in names(Pass_subset)) {
+  formula <- as.formula(paste(y, "~ post_Howmany*con| Player + after"))  
+  model <- felm(formula, data = hetero_data )
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"][[3]]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+  row <- data.frame(Dependent_Variable = y,
+                    `BLMpost*con` = coef(model)[[3]],
+    Signif.level = stars,
+    SE = sqrt(diag(vcov(model)))[[3]],
+    Obs = length(model$residuals),
+    stringsAsFactors = FALSE)
+  
+  con_Results_Passing <- rbind(con_Results_Passing, row)
+}
+
+print(xtable(con_Results_Passing), 
+      include.rownames = F, 
+      hline.after=c(-1,0,nrow(con_Results_Passing)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/con_Results_Passing.tex",
+      type="latex")
+
+#Explore hetero across is con club on Possession specifications.
+con_Results_Possession <- data.frame(
+  Dependent_Variable = character(),
+  `BLMpost*con` = numeric(),
+  Signif.level = character(),
+  SE = numeric(),
+  Obs = numeric(),
+  stringsAsFactors = FALSE)
+
+for (y in names(Possession_subset)) {
+  formula <- as.formula(paste(y, "~ post_Howmany*con| Player + after"))  
+  model <- felm(formula, data = hetero_data )
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"][[3]]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+  row <- data.frame(Dependent_Variable = y,
+                    `BLMpost*con` = coef(model)[[3]],
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model)))[[3]],
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  con_Results_Possession <- rbind(con_Results_Possession, row)
+}
+
+print(xtable(con_Results_Possession), 
+      include.rownames = F, 
+      hline.after=c(-1,0,nrow(con_Results_Possession)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/con_Results_Possession.tex",
+      type="latex")
+
+
+# Explore hetero across is Labour club on Passing specifications.
+lab_Results_Passing <- data.frame(
+  Dependent_Variable = character(),
+  `BLMpost*lab` = numeric(),
+  Signif.level = character(),
+  SE = numeric(),
+  Obs = numeric(),
+  stringsAsFactors = FALSE)
+
+for (y in names(Pass_subset)) {
+  formula <- as.formula(paste(y, "~ post_Howmany*lab| Player + after"))  
+  model <- felm(formula, data = hetero_data )
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"][[3]]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+  row <- data.frame(Dependent_Variable = y,
+                    `BLMpost*lab` = coef(model)[[3]],
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model)))[[3]],
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  lab_Results_Passing <- rbind(lab_Results_Passing, row)
+}
+
+print(xtable(lab_Results_Passing), 
+      include.rownames = F, 
+      hline.after=c(-1,0,nrow(lab_Results_Passing)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/lab_Results_Passing.tex",
+      type="latex")
+
+#Explore hetero across is lab club on Possession specifications.
+lab_Results_Possession <- data.frame(
+  Dependent_Variable = character(),
+  `BLMpost*lab` = numeric(),
+  Signif.level = character(),
+  SE = numeric(),
+  Obs = numeric(),
+  stringsAsFactors = FALSE)
+
+for (y in names(Possession_subset)) {
+  formula <- as.formula(paste(y, "~ post_Howmany*lab| Player + after"))  
+  model <- felm(formula, data = hetero_data )
+  
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"][[3]]
+  stars <- ifelse(pvalues<0.001, "***", ifelse(pvalues<0.01, "**", ifelse(pvalues<0.05, "*", "")))
+  row <- data.frame(Dependent_Variable = y,
+                    `BLMpost*lab` = coef(model)[[3]],
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model)))[[3]],
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  lab_Results_Possession <- rbind(lab_Results_Possession, row)
+}
+
+print(xtable(lab_Results_Possession), 
+      include.rownames = F, 
+      hline.after=c(-1,0,nrow(lab_Results_Possession)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/lab_Results_Possession.tex",
+      type="latex")
+
+
+```
+```{r Mechanism}
+#Mechanism Exploration
+
+#Exponential function form.
+
+#Passing Section
+Passing_exp <- data.frame(Dependent_Variable = character(),
+                              Coefficient = numeric(),
+                              Signif.level = character(),
+                              SE = numeric(),
+                              R2 = numeric(),
+                              Obs = numeric(),
+                              stringsAsFactors = FALSE)
+
+for (y in names(Pass_subset)) {
+  formula <- as.formula(paste("log(", y, "+1) ~ post_Howmany | Player + after"))
+  model <- felm(formula, data = data)
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.01, "***", 
+                  ifelse(pvalues<0.05, "**", 
+                         ifelse(pvalues<0.1, "*", "")))
+  
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    R2 = result$r.squared,
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Passing_exp <- rbind(Passing_exp, row)
+}
+print(xtable(caption = "Exponential Form of Passing Specifications", Passing_exp), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(Passing_exp)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/Passing_exp.tex",
+      type="latex")
+
+#Possession Section
+Possession_exp <- data.frame(Dependent_Variable = character(),
+                                Coefficient = numeric(),
+                                Signif.level = character(),
+                                SE = numeric(),
+                                R2 = numeric(),
+                                Obs = numeric(),
+                                stringsAsFactors = FALSE)
+
+for (y in names(Possession_subset)) {
+  formula <- as.formula(paste("log(", y, "+1) ~ post_Howmany | Player + after"))
+  model <- felm(formula, data = data)
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.01, "***", 
+                  ifelse(pvalues<0.05, "**", 
+                         ifelse(pvalues<0.1, "*", "")))
+  
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    R2 = result$r.squared,
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Possession_exp <- rbind(Possession_exp, row)
+}
+print(xtable(Possession_exp,
+             caption = "Exponential Form of Possession Specifications"), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(Possession_exp)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/Possession_exp.tex",
+      type="latex")
+#Logrithm function form.
+
+#Passing Section
+Passing_log <- data.frame(Dependent_Variable = character(),
+                          Coefficient = numeric(),
+                          Signif.level = character(),
+                          SE = numeric(),
+                          R2 = numeric(),
+                          Obs = numeric(),
+                          stringsAsFactors = FALSE)
+
+for (y in names(Pass_subset)) {
+  formula <- as.formula(paste(y, "~ log(post_Howmany + 1) | Player + after"))
+  model <- felm(formula, data = data)
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.01, "***", 
+                  ifelse(pvalues<0.05, "**", 
+                         ifelse(pvalues<0.1, "*", "")))
+  
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    R2 = result$r.squared,
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Passing_log <- rbind(Passing_log, row)
+}
+print(xtable(caption = "Exponential Form of Passing Specifications", Passing_log), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(Passing_log)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/Passing_log.tex",
+      type="latex")
+
+#Possession Section
+Possession_log <- data.frame(Dependent_Variable = character(),
+                             Coefficient = numeric(),
+                             Signif.level = character(),
+                             SE = numeric(),
+                             R2 = numeric(),
+                             Obs = numeric(),
+                             stringsAsFactors = FALSE)
+
+for (y in names(Possession_subset)) {
+  formula <- as.formula(paste(y, "~ log(post_Howmany + 1) | Player + after"))
+  model <- felm(formula, data = data)
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.01, "***", 
+                  ifelse(pvalues<0.05, "**", 
+                         ifelse(pvalues<0.1, "*", "")))
+  
+  row <- data.frame(Dependent_Variable = y,
+                    Coefficient = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    R2 = result$r.squared,
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Possession_log <- rbind(Possession_log, row)
+}
+print(xtable(Possession_log,
+             caption = "Exponential Form of Possession Specifications"), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(Possession_log)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/Possession_log.tex",
+      type="latex")
+#Visualize the R-square of different function forms
+r_squares_Passing <- data.frame(Model_Type = c(rep("Linear", length(Passing_Results$R2)),
+                                               rep("Log-transformed", length(Passing_log$R2)),
+                                               rep("Exponential-transformed", length(Passing_exp$R2))),
+                                R_squared = c(Passing_Results$R2, Passing_log$R2, Passing_exp$R2))
+ggplot(r_squares_Passing, aes(x = Model_Type, y = R_squared, fill = Model_Type)) +
+  geom_boxplot() +
+  labs(title="Comparison of R-squared Values", x="Model Type", y="R-squared") +
+  theme_minimal()
+
+t.test(Passing_Results$R2, Passing_exp$R2)
+t.test(Passing_Results$R2, Passing_log$R2)
+
+#Use various post quantile as x variable
+#Passing Section
+Passing_quantile_3 <- data.frame(Dependent_Variable = character(),
+                              quantile_3 = numeric(),
+                              Signif.level = character(),
+                              SE = numeric(),
+                              R2 = numeric(),
+                              Obs = numeric(),
+                              stringsAsFactors = FALSE)
+
+for (y in names(Pass_subset)) {
+  formula <- as.formula(paste(y, "~ quantile_3 | Player + after"))
+  model <- felm(formula, data = data)
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.01, "***", 
+                  ifelse(pvalues<0.05, "**", 
+                         ifelse(pvalues<0.1, "*", "")))
+  
+  row <- data.frame(Dependent_Variable = y,
+                    quantile_3 = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    R2 = result$r.squared,
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Passing_quantile_3 <- rbind(Passing_quantile_3, row)
+}
+
+Passing_quantile_4 <- data.frame(
+                                 quantile_4 = numeric(),
+                                 Signif.level = character(),
+                                 SE = numeric(),
+                                 R2 = numeric(),
+                                 Obs = numeric(),
+                                 stringsAsFactors = FALSE)
+
+for (y in names(Pass_subset)) {
+  formula <- as.formula(paste(y, "~ quantile_4 | Player + after"))
+  model <- felm(formula, data = data)
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.01, "***", 
+                  ifelse(pvalues<0.05, "**", 
+                         ifelse(pvalues<0.1, "*", "")))
+  
+  row <- data.frame(
+                    quantile_4 = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    R2 = result$r.squared,
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Passing_quantile_4 <- rbind(Passing_quantile_4, row)
+}
+print(xtable(cbind(Passing_quantile_3, Passing_quantile_4)), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(Passing_quantile_3)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/Passing_quantile.tex",
+      type="latex")
+#Possession Section
+Possession_quantile_3 <- data.frame(Dependent_Variable = character(),
+                                 quantile_3 = numeric(),
+                                 Signif.level = character(),
+                                 SE = numeric(),
+                                 R2 = numeric(),
+                                 Obs = numeric(),
+                                 stringsAsFactors = FALSE)
+
+for (y in names(Possession_subset)) {
+  formula <- as.formula(paste(y, "~ quantile_3 | Player + after"))
+  model <- felm(formula, data = data)
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.01, "***", 
+                  ifelse(pvalues<0.05, "**", 
+                         ifelse(pvalues<0.1, "*", "")))
+  
+  row <- data.frame(Dependent_Variable = y,
+                    quantile_3 = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    R2 = result$r.squared,
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Possession_quantile_3 <- rbind(Possession_quantile_3, row)
+}
+
+Possession_quantile_4 <- data.frame(
+                                 quantile_4 = numeric(),
+                                 Signif.level = character(),
+                                 SE = numeric(),
+                                 R2 = numeric(),
+                                 Obs = numeric(),
+                                 stringsAsFactors = FALSE)
+
+for (y in names(Possession_subset)) {
+  formula <- as.formula(paste(y, "~ quantile_4 | Player + after"))
+  model <- felm(formula, data = data)
+  result <- summary(model)
+  pvalues <- coef(summary(model))[,"Pr(>|t|)"]
+  stars <- ifelse(pvalues<0.01, "***", 
+                  ifelse(pvalues<0.05, "**", 
+                         ifelse(pvalues<0.1, "*", "")))
+  
+  row <- data.frame(
+                    quantile_4 = coef(model),
+                    Signif.level = stars,
+                    SE = sqrt(diag(vcov(model))),
+                    R2 = result$r.squared,
+                    Obs = length(model$residuals),
+                    stringsAsFactors = FALSE)
+  
+  Possession_quantile_4 <- rbind(Possession_quantile_4, row)
+}
+print(xtable(cbind(Possession_quantile_3, Possession_quantile_4)), 
+      include.rownames=FALSE, 
+      hline.after=c(-1,0,nrow(Possession_quantile_3)), 
+      file="D:/Xujianuo/socialmedia paper/BLMproj/BLMCode/tables/Possession_quantile.tex",
+      type="latex")
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

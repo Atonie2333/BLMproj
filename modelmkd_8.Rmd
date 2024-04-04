@@ -1,0 +1,711 @@
+---
+title: "Model_mkd8"
+author: "Xu Jianuo"
+date: "2024-01-27"
+output: 
+  pdf_document: 
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("D:/Xujianuo/socialmedia paper/BLMproj/regcode")
+```
+
+```{r Data Set}
+###Data Set###
+#import player data set
+
+library(readr)
+df <- read_csv("summary.csv")
+#let the first column be title
+colnames(df) <- df[1, ]
+df <- df[-1, ]
+#delete summary rows
+df <- df[!is.na(df$Pos) & df$Pos != "", ]
+#Rename variables
+library(dplyr)
+df <- df[ , !duplicated(names(df))]
+df <- df %>%
+  rename(club = `Unnamed: 123_level_1`, datestr = `Unnamed: 124_level_1`,name = Player)
+
+df$date <- as.Date(df$datestr,format = "%Y%m%d")
+df$week_num <- as.numeric(strftime(df$date, format="%U"))
+
+#transfer age in years to days
+years <- as.numeric(sub("-.*", "", df$Age)) 
+days <- as.numeric(sub(".*-", "", df$Age))  
+df$age_indays <- years * 365 + days
+df$age_inyears<-years + days/365
+df$after<-ifelse(df$date>='2020-05-25',1,0)
+
+
+#Add nation variable equal to 1 if nation is England, 0 otherwise
+df$eng<-ifelse(df$Nation == "eng ENG",1,0)
+
+eu_countries <- c("AUT", "BEL", "BGR", "HRV", "CYP", "CZE", "DNK", "EST", "FIN",
+                  "FRA", "DEU", "GRC", "HUN", "IRL", "ITA", "LVA", "LTU", "LUX",
+                  "MLT", "NLD", "POL", "PRT", "ROU", "SVK", "SVN", "ESP", "SWE")
+df$is_eu <- ifelse(sapply(strsplit(as.character(df$Nation), " "), `[`, 2) %in% eu_countries, 1, 0)
+
+
+#data$blackplayer <- as.integer(data$name %in% blackplayers)
+#data$blackplayer[data$name %in% na_race] <- NA
+
+
+#value post
+
+df$post <- ifelse(df$club == "Liverpool", 8,
+                    ifelse(df$club == "Arsenal", 4,
+                           ifelse(df$club == "Chelsea", 5,
+                                  ifelse(df$club == "Tottenham", 7,
+                                         ifelse(df$club == "Manchester Utd", 2,
+                                                ifelse(df$club == "Manchester City", 0,
+                                                       ifelse(df$club == "Leicester City", 0,
+                                                              ifelse(df$club == "West Ham", 2,
+                                                                     ifelse(df$club == "Everton", 10,
+                                                                            ifelse(df$club == "Norwich City", 4,
+                                                                                   ifelse(df$club == "Newcastle Utd", 1,
+                                                                                          ifelse(df$club == "Crystal Palace", 5,
+                                                                                                 ifelse(df$club == "Bournemouth", 9,
+                                                                                                        ifelse(df$club == "Southampton", 1,
+                                                                                                               ifelse(df$club == "Burnley", 2,
+                                                                                                                      ifelse(df$club == "Brighton", 3,
+                                                                                                                             ifelse(df$club == "Watford", 4,
+                                                                                                                                    ifelse(df$club  == "Aston Villa", 7,
+                                                                                                                                           ifelse(df$club == "Sheffield Utd", 4,
+                                                                                                                                                  ifelse(df$club == "Wolves", 1,NA
+                                                                                                                                                         
+                                                                                                                                                  ))))))))))))))))))))
+
+#Convert data into numeric
+df[, 7:80] <- sapply(df[, 7:80], as.numeric)
+# delete rows including infinity value
+data<- df[!is.na(df$`Cmp%`) & df$`Cmp%` != "", ]
+
+blackplayers<-c("Tammy Abraham","Ché Adams","Tosin Adarabioyo", "Dennis Adeniran","Albert Adomah", 
+                "Benik Afobe","Daniel Agyei","Ahmed El Mohamady","Ola Aina","Nathan Aké","Ali Koiki",
+                "Ibrahim Amadou","Daniel Amartey","Joseph Anang","Tino Anjorin", "Michail Antonio", 
+                "Benny Ashley-Seal","Christian Atsu","Sérge Aurier","Pierre -Emerick Auvameyang","Taiwo Awoniyi",
+                "Jordan Ayew","Abdul Baba","Eric Bailly","Tiémoué Bakayoko","Folarin Balogun","Beni Baningime","Calvin Bassey",
+                "Michy Batshuayi","Gavin Bazunu","Benjamin Mendy","Jayden Bennettes","Christian Benteke","Steven Bergwijn","Bernardo",
+                "Ryan Bertrand", "Philip Billing","Yves Bissouma","Joshua Bohui","Tolaji Bola","Yannick Bolasie","Willy-Arnaud Boly","Gaëtan Bong",
+                "Sofiane Boufal","Rhian Brewster","Isaiah Brown","Dominic Calvert-Lewin","Vontae Campbell","Étienne Capoue",
+                "Cameron Carter-Vickers","Trevoh Chalobah", "Tahith Chong","Hamza Choudhury","Nathaniel Clyne",
+                "Danilo","Arnaut Danjuma","Kevin Danso","Keinan Davis","Jermain Defoe","Tom Dele-Bashiru","Fabian Delph","Jason Denayer",
+                "Mousa Demlélé","Fousseni Diabaté","Mohamed Diamé", "Grady Diangna","Alpha Dionkou","Issa Diop","Moussa Djenepo",
+                "Domingos Quina","Abdoulayes Doucouré","Douglas Luiz","Ovie Ejaria","Emerson","Niall Ennis","Bright Enobakhare","Timothy Eyoma",
+                "Fabinho","Malachi Fagan-Walcott","Edimilson Fernandes","Fernandinho","Timothy Fosu-Mensah","Dimitri Foulquier","Fred","Jean-Philippe Gbamin",
+                "Gedson Fernandes","Morgan Gibbs-White","Ben Godfrey","Claudio Gomes","Joe Gomez","John-Kymani Gordon","Lee Grant","Demariai Gray",
+                "Andre Green","Mason Greenwood","Marc Guéhi","Idrissa Gueye","Sébastien Haller","Kortney Hause","Kaine Hayden","Michael Hector","Hélder Costa",
+                "Rushian Hepburn-Murphy","Onel Hernández","Mason Holgate","Callum Hudson-Odoi","Cameron Humphreys","Joseph Hungbo","Jordon Ibe",
+                "Adam Idah","Odion Ighalo","Kelechi Iheanacho","Ivan Cavaleiro","Alex Iwobi","José Izquierdo","Jacob Murphy","Reece James","Alexandre Jankewitz",
+                "João Pedro","Joelinton","Darnell Johnson","James Justin","Christian Kabasele","Yones Kaboul","Sullay Kaikai","N'Golo Kanté","Moise Kean","Naby Keïta",
+                "Lloyd Kelly","Joshua King","Nya Kirby","Anthony Knockaert","Jonathan Kodjia","Vincent Kompany","Ezri Konsa","Billy Koumetio","Cheikhou Kouyaté",
+                "Alexandre Lacazette","Ethan Laird","Taria Lamptey","Yasser Larouci","Jamaal Lascelles","Achraf Lazaar","Valentino Lazaro","Moritz Leitner","Mario Lemina",
+                "Jefferson Lerma","Thakgalo Leshabela","Jesse Lingard","Jürgen Locadia","Ruben Loftus-Cheek","Ademola Lookman","Louis Thompson","Lucas Moura","Romelu Lukaku",
+                "Dodi Lukébakio","Brooklyn Lyons-Foster","Ian Maatsen","Jacob Maddox","Riyad Mahrez","Ainsley Maitland-Niles","Sadio Mané","Eliaquim Mangala","Pablo Marí","Adrian Mariappa",
+                "Anthony Martial","Cuco Martina","Arthur Masuaku","Joël Matip","David McGoldrick","D'Mani Mellor","Nampalys Mendy","Teden Mengi","Yerry Mina","Tyrone Ming",
+                "Tyrick Mitchell","Mohamed Salah","Wes Morgan","Victor Moses","Joel Mumbongo","Marvelous Nakamba","Wilfred Ndidi","Tanguy Ndombélé","Reiss Nelson","Jeremy Ngakia",
+                "Oumar Niasse","Eddie Nketiah","Georges-Kévin Nkoudou","Danel Nlundulu","Felix Nmecha","Michael Obafemi","Nnamdi Ofoborh","Angelo Ogbonna","Sheyi Ojo","Stefano Okaka",
+                "Josh Onomah","Divock Origi","Owen Otasowie","Reece Oxford","Kasey Palmer","Pedro Obiang","Terell Pennant","Nicolas Pépé","Brandon Pierrick","Paul Pogba","Pedro Porro",
+                "Jason Puncheon","Rafael Camacho","Largie Ramazani","Kayne Ramsay","Darren Randolph","Marcus Rashford","Nathan Redmond","Winston Reid","Dominic Revan","Ricardo Pereira",
+                "Taylor Richards","Richarlison","Jairo Riedewald","Roberto Firmino","Callum Robinson","Roderick Miranda","Salomón Rondón","Danny Rose","Antonio Antonio Rüdiger","Allan Saint-Maximin",
+                "Henri Saivet","Bukayo Saka","Mamadou Sakho","Bakary Sako","William Saliba","Mbwana Samatta","Austin Samuels","Robert Sánchez","Dion Sanderson","Leroy Sané","Philippe Sandler",
+                "Ismaïla Sarr","Christian Saydee","Jeffrey Schlupp","Ken Sema","Ryan Sessegnon","Djibril Sidibé","Sidnei Tavares","Ellis Simms","Jerome Sinclair","Moussa Sissoko","Pape Souaré","Bayli Spencer-Adams",
+                "Jack Spong","Junior Stanislas","Zack Steffen","Dujon Sterling","Daniel Sturridge","Isaac Success","Japhet Tanganga","Percy Tau","Neil Taylor","Nathan Tella","Alexander Tettey",
+                "Dominic Thompson","Youri Tielemans","Timi Odusina","Fikayo Tomori","Cenk Tosun","Andros Townsend","Adama Traoré","Nathan Trott","Axel Tuanzebe","Antonio Valencia","Yan Valery","Patrick van Aanholt",
+                "Virgil van Dijk","Theo Walcott","Kyle Walker-Peters","Aaron Wan-Bissaka","Victor Wanyama","Danny Welbeck","Wesley","Georginio Wijnaldum","Jetro Willems","Willan","Joe Willock","Callum Wilson","Xande Silva",
+                "Romaric Yapi","DeAndre Yedlin","Ashley Young","Wifried Zaha","Marvin Zeegelaar","Jordan Zemura","Kurt Zouma"
+                )
+na_race<-c("Brennan Camp","Leonardo Campana","Samir Carruthers","Kane Crichlow","Andrew Crofts","Renat Dadashov","Sam Dalby","James Daly","Mikkel Diskerud","Jake Doyle-Hayes","Anwar EI Ghazi",
+           "Akin Famewo","Will Ferry","Flávio Cristóvão","Marcel Franke","Brooklyn Genesini","Paul Gladon","Paul Glatzel","Joseph Hardy","Nathan Harker","Ben Heneghan","Kaylen Hinds","Rob Holding",
+           "Ricky Holmes","Nathaniel Shio Hong Wan","Lukas Jensen","Tyreece John-Jules","George Johnston","Soufyan Ahannach","Allan","Billy Arce","Antonio Barreca","Mason barrett","Nathan Baxter",
+           "Bernardo Rosa","Luke Bolton","Rocky Bushiri","Jack Bycrofy")
+data$blackplayer <- as.integer(data$name %in% blackplayers)
+data$blackplayer[data$name %in% na_race] <- NA
+
+
+#count number of players 
+unique_players <- unique(data$name)
+number_of_players <- length(unique_players)
+
+#Binary post equals to 1 if post greater than median, 0 otherwise.
+
+data <- data %>%
+  mutate(
+    median_post = median(post, na.rm = TRUE), # Calculate median, remove NA values if any
+    post_dummy = if_else(post > median_post, 1, 0),
+    post_MorL = if_else(post_dummy == 1 & after == 1, 1, 0)
+  ) %>%
+  select(-median_post) # Remove the median_post column
+#Binary post equals to 1 if post greater than zero, 0 otherwise.
+data <- data %>%
+  mutate(
+    TGroup = if_else(post > 0, 1, 0),#Define clubs without any posts as control group
+    post_TorC = if_else(TGroup == 1 & after == 1, 1, 0), #Define treatment happen after 5-25
+    post_Howmany = if_else(after == 1, post, 0)#Continues post as club's support intensity
+  )
+
+
+#Rename time variables
+library(zoo)
+data$month<-as.yearmon(data$date)
+library(lubridate)
+start_date <- ymd("2019-08-09")
+
+# count days' difference
+data$days_diff <- difftime(data$date, start_date, units = "days")
+
+# transform days' difference to weeks'
+data$week_count <- floor(data$days_diff / 7) + 1
+data$week_count<-as.numeric(data$week_count)
+
+data$douweek<-floor(data$days_diff / 14) + 1
+data$douweek<-as.numeric(data$douweek)
+
+data$triweek<-floor(data$days_diff / 21) + 1
+
+data$monthcount<-floor(data$days_diff / 30) + 1
+data$monthcount<-as.numeric(data$monthcount)
+```
+
+```{r Principal Components Analysis(PCA)}
+##Principle Components Analysis (PCA)##
+perf_subset<- data[,7:80]
+
+# Identify columns with NAs
+columns_with_nas <- colSums(is.na(perf_subset)) > 0
+#Delete columns with NAs
+subset_clean <- perf_subset[, !columns_with_nas]
+
+#PCA estimate
+pr.out <- prcomp(subset_clean, scale = T)
+pr.out$rotation = -pr.out$rotation
+pr.out$x = -pr.out$x
+
+p_pca <- biplot(pr.out, scale = 0)
+p_pca
+#Plot PVE explained by each component
+pr.var <- pr.out$sdev^2
+pve <- pr.var/sum(pr.var)
+par(mfrow = c(1,2))
+plot(pve, xlab = "Principal Component", ylab = "Propotion of Variance Explained", 
+     ylim = c(0, 1), type = "b")
+plot(cumsum(pve), xlab = "Principal Component", ylab = "Cumulative Propotion of Variance Explained", 
+     ylim = c(0, 1), type = "b")
+
+#Choose first 3 PC as new specifications
+
+data$X_pca <- pr.out$x[, 1:3]
+
+data$X_pca.PC1 <- data$X_pca[, 1]
+data$X_pca.PC2 <- data$X_pca[, 2]
+data$X_pca.PC3 <- data$X_pca[, 3]
+#Descriptive statistic
+summary(data)
+```
+
+```{r Plots}
+#Club information
+df_post_schedule<-read.csv("post_schedule_long.csv")
+df_post_schedule <- df_post_schedule[df_post_schedule$club != "Brentford", ]
+summary(df_post_schedule)
+
+
+#Plot post schedule
+library(ggplot2)
+#Create the plot with ggplot2
+p_total <- ggplot(df_post_schedule, aes(x = date, y = post, group = club, color = club)) +
+  #geom_line() + # Use geom_line if you want to connect points with lines, or use geom_point for just the points
+  geom_point() + # Add points to the line
+  theme_minimal() + # Use a minimal theme for a cleaner look
+  labs(x = "Date", y = "Post", title = "Posts by Club over Time") + 
+  scale_color_discrete(name = "Club") + # This will automatically assign colors to clubs
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), # Rotate the date labels
+        legend.text = element_text(size = 8), # Adjust legend text size
+        legend.title = element_text(size = 9), # Adjust legend title size
+        legend.key.size = unit(0.5, 'cm'), # Adjust size of the keys in legend
+        aspect.ratio = 0.3 # Control the aspect ratio of the plot
+  ) # Rotate the date labels for better readability
+# Create plot individually
+library(patchwork)
+# Convert the date column to Date type to ensure proper sorting
+#df_post_schedule$date <- as.Date(df_post_schedule$date, format="%Y/%m/%d")
+
+# Group the data and calculate the cumulative sum for each group
+
+df_post_schedule <- df_post_schedule %>%
+  arrange(club, date) %>%  # Sort by club and date
+  group_by(club) %>%  # Group by the club
+  mutate(cumulative_posts = cumsum(post))  # Calculate the cumulative number of posts
+df_post_schedule$cumulative_posts<-as.integer(df_post_schedule$cumulative_posts)
+# Customize the theme to decrease text size for more compact plotting
+
+# Retrieve all unique club names
+clubs <- unique(df_post_schedule$club)
+p<-NULL
+# Create and save a separate plot for each club
+for (club in clubs) {
+  # Extract data for the current club
+  club_data <- df_post_schedule %>% filter(club == !! club)
+  
+  # Create the plot using ggplot2
+  single_plot<-ggplot(club_data, aes(x = date, y = cumulative_posts)) +
+    #geom_line() +  # Line for the trend of posts over time
+    geom_point() + # Points for each data entry
+    theme_minimal() +  # Minimal theme for a nice layout
+    
+    labs(title = sprintf('Posts for %s', club),
+         x = "Date",
+         y = "Posts")+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  if (is.null(p)) {
+    p <- single_plot
+  } else {
+    p <- p + single_plot
+  }
+}
+p_layout <- p + 
+  plot_layout(ncol = 4, guides = "collect") + 
+  theme(
+    plot.margin = unit(c(1, 1, 1, 1), "lines"), # Adjust the margin around each plot
+    strip.text = element_text(size = 3) # Adjust the text size of facet labels if using facet_wrap or facet_grid
+  )
+p_layout
+
+##Plot Performance with time##
+
+#Create the plot with ggplot2
+p_player <- ggplot(data, aes(x = week_count, y = `Cmp%`, group = club, color = club)) +
+  geom_smooth() + # Use geom_line if you want to connect points with lines, or use geom_point for just the points
+  #geom_point(shape = 1) + # Add points to the line
+  geom_vline(xintercept = 31, linetype = "dashed", color = "red")+
+  geom_vline(xintercept = 45, linetype = "solid", color = "black")+
+  theme_minimal() + # Use a minimal theme for a cleaner look
+  labs(x = "Date", y = "Cmp%", title = "Cmp% over Time") + 
+  scale_color_discrete(name = "Club") + # This will automatically assign colors to clubs
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), # Rotate the date labels
+        legend.text = element_text(size = 8), # Adjust legend text size
+        legend.title = element_text(size = 9), # Adjust legend title size
+        legend.key.size = unit(0.5, 'cm'), # Adjust size of the keys in legend
+        aspect.ratio = 0.3 # Control the aspect ratio of the plot
+  ) # Rotate the date labels for better readability
+p_player
+
+# Create plot individually
+# Retrieve all unique club names
+clubs <- unique(data$club)
+p <- NULL
+# Create and save a separate plot for each club
+for (club in clubs) {
+  # Extract data for the current club
+  Cmp_data <- data %>% filter(club == !! club)
+  
+  # Create the plot using ggplot2
+  single_plot_player<-ggplot(Cmp_data, aes(x = week_count, y = `Cmp%`, 
+                                           )) +
+    geom_smooth() +  # Line for the trend of posts over time
+    #geom_line() +
+    #geom_point(shape = 1) + # Points for each data entry
+    geom_vline(xintercept = 31, linetype = "dashed", color = "red") +
+    geom_vline(xintercept = 45, linetype = "solid", color = "black") +
+    theme_minimal() +  # Minimal theme for a nice layout
+    
+    labs(title = sprintf('%s', club),
+         x = "Week",
+         y = "Cmp%")+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  if (is.null(p)) {
+    p <- single_plot_player
+  } else {
+    p <- p + single_plot_player
+  }
+}
+p_Cmp <- p + 
+  plot_layout(ncol = 4, guides = "collect") + 
+  theme(
+    plot.margin = unit(c(1, 1, 1, 1), "lines"), # Adjust the margin around each plot
+    strip.text = element_text(size = 3) # Adjust the text size of facet labels if using facet_wrap or facet_grid
+  )
+p_Cmp
+
+#Plot Tkl + Int
+p <- NULL
+for (club in clubs) {
+  # Extract data for the current club
+  Cmp_data <- data %>% filter(club == !! club)
+  
+  # Create the plot using ggplot2
+  single_plot_player <- ggplot(Cmp_data, aes(x = week_count, y = `Tkl+Int`, 
+  )) +
+    geom_smooth() +  # Line for the trend of posts over time
+    #geom_line() +
+    #geom_point(shape = 1) + # Points for each data entry
+    geom_vline(xintercept = 31, linetype = "dashed", color = "red") +
+    geom_vline(xintercept = 45, linetype = "solid", color = "black") +
+    theme_minimal() +  # Minimal theme for a nice layout
+    
+    labs(title = sprintf('%s', club),
+         x = "Week",
+         y = "Tkl+Int")+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  if (is.null(p)) {
+    p <- single_plot_player
+  } else {
+    p <- p + single_plot_player
+  }
+}
+p_TklplusInt <- p + 
+  plot_layout(ncol = 4, guides = "collect") + 
+  theme(
+    plot.margin = unit(c(1, 1, 1, 1), "lines"), # Adjust the margin around each plot
+    strip.text = element_text(size = 3) # Adjust the text size of facet labels if using facet_wrap or facet_grid
+  )
+#ggsave("Tkl_and_Int.png",plot = p_TklplusInt,path = "D:/Xujianuo/socialmedia paper/BLMproj/material"
+       #, width = 12,height = 9,dpi = 300)
+p_TklplusInt
+#Plot PC1
+p <- NULL
+for (club in clubs) {
+  # Extract data for the current club
+  Cmp_data <- data %>% filter(club == !! club)
+  
+  # Create the plot using ggplot2
+  single_plot_player <- ggplot(Cmp_data, aes(x = week_count, y = X_pca.PC1, 
+  )) +
+    geom_smooth() +  # Line for the trend of posts over time
+    #geom_line() +
+    #geom_point(shape = 1) + # Points for each data entry
+    geom_vline(xintercept = 31, linetype = "dashed", color = "red") +
+    geom_vline(xintercept = 45, linetype = "solid", color = "black") +
+    theme_minimal() +  # Minimal theme for a nice layout
+    
+    labs(title = sprintf('%s', club),
+         x = "Week",
+         y = "PC1")+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  if (is.null(p)) {
+    p <- single_plot_player
+  } else {
+    p <- p + single_plot_player
+  }
+}
+p_PC1 <- p + 
+  plot_layout(ncol = 4, guides = "collect") + 
+  theme(
+    plot.margin = unit(c(1, 1, 1, 1), "lines"), # Adjust the margin around each plot
+    strip.text = element_text(size = 3) # Adjust the text size of facet labels if using facet_wrap or facet_grid
+  )
+#ggsave("PC1.png",plot = p_PC1,path = "D:/Xujianuo/socialmedia paper/BLMproj/material"
+       #, width = 12,height = 9,dpi = 300)
+p_PC1
+#Plot PC2
+p <- NULL
+for (club in clubs) {
+  # Extract data for the current club
+  Cmp_data <- data %>% filter(club == !! club)
+  
+  # Create the plot using ggplot2
+  single_plot_player <- ggplot(Cmp_data, aes(x = week_count, y = X_pca.PC2, 
+  )) +
+    geom_smooth() +  # Line for the trend of posts over time
+    #geom_line() +
+    #geom_point(shape = 1) + # Points for each data entry
+    geom_vline(xintercept = 31, linetype = "dashed", color = "red") +
+    geom_vline(xintercept = 45, linetype = "solid", color = "black") +
+    theme_minimal() +  # Minimal theme for a nice layout
+    
+    labs(title = sprintf('%s', club),
+         x = "Week",
+         y = "PC2")+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  if (is.null(p)) {
+    p <- single_plot_player
+  } else {
+    p <- p + single_plot_player
+  }
+}
+p_PC2 <- p + 
+  plot_layout(ncol = 4, guides = "collect") + 
+  theme(
+    plot.margin = unit(c(1, 1, 1, 1), "lines"), # Adjust the margin around each plot
+    strip.text = element_text(size = 3) # Adjust the text size of facet labels if using facet_wrap or facet_grid
+  )
+#ggsave("PC2.png",plot = p_PC2,path = "D:/Xujianuo/socialmedia paper/BLMproj/material"
+       #, width = 12,height = 9,dpi = 300)
+p_PC2
+```
+
+```{r DiD Analysis in 2 period}
+##Run DiD model##
+library(plm)
+library(lfe)
+#DiD model in 2-period
+#Use if or not post as BLM measure#  
+#Use pass completion as performance measure.
+did_Cmp_2period <-felm(`Cmp%` ~ post_TorC|after + name, data = data)
+summary(did_Cmp_2period)
+#Use  Progress pass as performance measure.
+did_PrgP_2period <-felm(PrgP ~ post_TorC|after+ name, data = data)
+summary(did_PrgP_2period)
+#Use tackles plus int as performance measure
+did_tklint_2period <- felm(`Tkl+Int`~ post_TorC|after + name, data = data)
+#Use PC as performance measure
+did_PC1_2period <-felm(X_pca.PC1 ~ post_TorC|after + name, data = data)
+summary(did_PC1_2period)
+did_PC2_2period <-felm(X_pca.PC2 ~ post_TorC|after + name, data = data)
+summary(did_PC2_2period)
+did_PC3_2period <-felm(X_pca.PC3 ~ post_TorC|after + name, data = data)
+summary(did_PC3_2period)
+
+#Use post above or below the median as BLM measure#  
+#Use pass completion as performance measure.
+did_Cmp_2period_MorL <-felm(`Cmp%` ~ post_MorL|after + name, data = data)
+summary(did_Cmp_2period_MorL)
+#Use  Progress pass as performance measure.
+did_PrgP_2period_MorL <-felm(PrgP ~ post_MorL|after+ name, data = data)
+summary(did_PrgP_2period_MorL)
+#Use tackles plus int as performance measure
+did_tklint_2period_MorL <- felm(`Tkl+Int`~ post_MorL|after + name, data = data)
+#Use PC as performance measure
+did_PC1_2period_MorL <-felm(X_pca.PC1 ~ post_MorL|after + name, data = data)
+summary(did_PC1_2period_MorL)
+did_PC2_2period_MorL <-felm(X_pca.PC2 ~ post_MorL|after + name, data = data)
+summary(did_PC2_2period_MorL)
+did_PC3_2period_MorL <-felm(X_pca.PC3 ~ post_MorL|after + name, data = data)
+summary(did_PC3_2period_MorL)
+
+#Use post numbers as BLM measure#  
+#Use pass completion as performance measure.
+did_Cmp_2period_Hm <-felm(`Cmp%` ~ post_Howmany|after + name, data = data)
+summary(did_Cmp_2period_Hm)
+#Use  Progress pass as performance measure.
+did_PrgP_2period_Hm <-felm(PrgP ~ post_Howmany|after+ name, data = data)
+summary(did_PrgP_2period_Hm)
+#Use tackles plus int as performance measure
+did_tklint_2period_Hm <- felm(`Tkl+Int`~ post_Howmany|after + name, data = data)
+#Use PC as performance measure
+did_PC1_2period_Hm <-felm(X_pca.PC1 ~ post_Howmany|after + name, data = data)
+summary(did_PC1_2period_Hm)
+did_PC2_2period_Hm <-felm(X_pca.PC2 ~ post_Howmany|after + name, data = data)
+summary(did_PC2_2period_Hm)
+did_PC3_2period_Hm <-felm(X_pca.PC3 ~ post_Howmany|after + name, data = data)
+summary(did_PC3_2period_Hm)
+```
+
+```{r DiD Analysis in week level}
+#DiD model in week
+#Use if or not post as BLM measure#  
+#Use pass completion as performance measure.
+did_Cmp_w <-felm(`Cmp%` ~ post_TorC|week_count + name, data = data)
+summary(did_Cmp_w)
+#Use  Progress pass as performance measure.
+did_PrgP_w <-felm(PrgP ~ post_TorC|week_count+ name, data = data)
+summary(did_PrgP_w)
+#Use tackles plus int as performance measure
+did_tklint_w <- felm(`Tkl+Int`~ post_TorC|week_count + name, data = data)
+#Use PC as performance measure
+did_PC1_w <-felm(X_pca.PC1 ~ post_TorC|week_count + name, data = data)
+summary(did_PC1_w)
+did_PC2_w <-felm(X_pca.PC2 ~ post_TorC|week_count + name, data = data)
+summary(did_PC2_w)
+did_PC3_w <-felm(X_pca.PC3 ~ post_TorC|week_count + name, data = data)
+summary(did_PC3_w)
+
+#Use post above or below the median as BLM measure#  
+#Use pass completion as performance measure.
+did_Cmp_w_MorL <-felm(`Cmp%` ~ post_MorL|week_count + name, data = data)
+summary(did_Cmp_w_MorL)
+#Use  Progress pass as performance measure.
+did_PrgP_w_MorL <-felm(PrgP ~ post_MorL|week_count+ name, data = data)
+summary(did_PrgP_w_MorL)
+#Use tackles plus int as performance measure
+did_tklint_w_MorL <- felm(`Tkl+Int`~ post_MorL|week_count + name, data = data)
+#Use PC as performance measure
+did_PC1_w_MorL <-felm(X_pca.PC1 ~ post_MorL|week_count + name, data = data)
+summary(did_PC1_w_MorL)
+did_PC2_w_MorL <-felm(X_pca.PC2 ~ post_MorL|week_count + name, data = data)
+summary(did_PC2_w_MorL)
+did_PC3_w_MorL <-felm(X_pca.PC3 ~ post_MorL|week_count + name, data = data)
+summary(did_PC3_w_MorL)
+
+#Use post numbers as BLM measure#  
+#Use pass completion as performance measure.
+did_Cmp_w_Hm <-felm(`Cmp%` ~ post_Howmany|week_count + name, data = data)
+summary(did_Cmp_w_Hm)
+#Use  Progress pass as performance measure.
+did_PrgP_w_Hm <-felm(PrgP ~ post_Howmany|week_count + name, data = data)
+summary(did_PrgP_w_Hm)
+#Use tackles plus int as performance measure
+did_tklint_w_Hm <- felm(`Tkl+Int`~ post_Howmany|week_count + name, data = data)
+#Use PC as performance measure
+did_PC1_w_Hm <-felm(X_pca.PC1 ~ post_Howmany|week_count + name, data = data)
+summary(did_PC1_w_Hm)
+did_PC2_w_Hm <-felm(X_pca.PC2 ~ post_Howmany|week_count + name, data = data)
+summary(did_PC2_w_Hm)
+did_PC3_w_Hm <-felm(X_pca.PC3 ~ post_Howmany|week_count + name, data = data)
+summary(did_PC3_w_Hm)
+```
+
+```{r DiD Analysis in double week level}
+#DiD model in double week
+
+#Use if or not post as BLM measure#  
+#Use pass completion as performance measure.
+did_Cmp_dw <-felm(`Cmp%` ~ post_TorC|douweek + name, data = data)
+summary(did_Cmp_dw)
+#Use  Progress pass as performance measure.
+did_PrgP_dw <-felm(PrgP ~ post_TorC|douweek+ name, data = data)
+summary(did_PrgP_dw)
+#Use tackles plus int as performance measure
+did_tklint_dw <- felm(`Tkl+Int`~ post_TorC|douweek + name, data = data)
+#Use PC as performance measure
+did_PC1_dw <-felm(X_pca.PC1 ~ post_TorC|douweek + name, data = data)
+summary(did_PC1_dw)
+did_PC2_dw <-felm(X_pca.PC2 ~ post_TorC|douweek + name, data = data)
+summary(did_PC2_dw)
+did_PC3_dw <-felm(X_pca.PC3 ~ post_TorC|douweek + name, data = data)
+summary(did_PC3_dw)
+
+#Use post above or below the median as BLM measure#  
+#Use pass completion as performance measure.
+did_Cmp_dw_MorL <-felm(`Cmp%` ~ post_MorL|douweek + name, data = data)
+summary(did_Cmp_dw_MorL)
+#Use  Progress pass as performance measure.
+did_PrgP_dw_MorL <-felm(PrgP ~ post_MorL|douweek+ name, data = data)
+summary(did_PrgP_dw_MorL)
+#Use tackles plus int as performance measure
+did_tklint_dw_MorL <- felm(`Tkl+Int`~ post_MorL|douweek + name, data = data)
+#Use PC as performance measure
+did_PC1_dw_MorL <-felm(X_pca.PC1 ~ post_MorL|douweek + name, data = data)
+summary(did_PC1_dw_MorL)
+did_PC2_dw_MorL <-felm(X_pca.PC2 ~ post_MorL|douweek + name, data = data)
+summary(did_PC2_dw_MorL)
+did_PC3_dw_MorL <-felm(X_pca.PC3 ~ post_MorL|douweek + name, data = data)
+summary(did_PC3_dw_MorL)
+
+#Use post numbers as BLM measure#  
+#Use pass completion as performance measure.
+did_Cmp_dw_Hm <-felm(`Cmp%` ~ post_Howmany|douweek + name, data = data)
+summary(did_Cmp_dw_Hm)
+#Use  Progress pass as performance measure.
+did_PrgP_dw_Hm <-felm(PrgP ~ post_Howmany|douweek + name, data = data)
+summary(did_PrgP_dw_Hm)
+#Use tackles plus int as performance measure
+did_tklint_dw_Hm <- felm(`Tkl+Int`~ post_Howmany|douweek + name, data = data)
+#Use PC as performance measure
+did_PC1_dw_Hm <-felm(X_pca.PC1 ~ post_Howmany|douweek + name, data = data)
+summary(did_PC1_dw_Hm)
+did_PC2_dw_Hm <-felm(X_pca.PC2 ~ post_Howmany|douweek + name, data = data)
+summary(did_PC2_dw_Hm)
+did_PC3_dw_Hm <-felm(X_pca.PC3 ~ post_Howmany|douweek + name, data = data)
+summary(did_PC3_dw_Hm)
+```
+
+```{r DiD Analysis in month level}
+#DiD model in month
+#Use if or not post as BLM measure#  
+#Use pass completion as performance measure.
+did_Cmp_month <-felm(`Cmp%` ~ post_TorC|monthcount + name, data = data)
+summary(did_Cmp_month)
+#Use  Progress pass as performance measure.
+did_PrgP_month <-felm(PrgP ~ post_TorC|monthcount+ name, data = data)
+summary(did_PrgP_month)
+#Use tackles plus int as performance measure
+did_tklint_month <- felm(`Tkl+Int`~ post_TorC|monthcount + name, data = data)
+#Use PC as performance measure
+did_PC1_month <-felm(X_pca.PC1 ~ post_TorC|monthcount + name, data = data)
+summary(did_PC1_month)
+did_PC2_month <-felm(X_pca.PC2 ~ post_TorC|monthcount + name, data = data)
+summary(did_PC2_month)
+did_PC3_month <-felm(X_pca.PC3 ~ post_TorC|monthcount + name, data = data)
+summary(did_PC3_month)
+
+#Use post above or below the median as BLM measure#  
+#Use pass completion as performance measure.
+did_Cmp_month_MorL <-felm(`Cmp%` ~ post_MorL|monthcount + name, data = data)
+summary(did_Cmp_month_MorL)
+#Use  Progress pass as performance measure.
+did_PrgP_month_MorL <-felm(PrgP ~ post_MorL|monthcount+ name, data = data)
+summary(did_PrgP_month_MorL)
+#Use tackles plus int as performance measure
+did_tklint_month_MorL <- felm(`Tkl+Int`~ post_MorL|monthcount + name, data = data)
+#Use PC as performance measure
+did_PC1_month_MorL <-felm(X_pca.PC1 ~ post_MorL|monthcount + name, data = data)
+summary(did_PC1_month_MorL)
+did_PC2_month_MorL <-felm(X_pca.PC2 ~ post_MorL|monthcount + name, data = data)
+summary(did_PC2_month_MorL)
+did_PC3_month_MorL <-felm(X_pca.PC3 ~ post_MorL|monthcount + name, data = data)
+summary(did_PC3_month_MorL)
+
+#Use post numbers as BLM measure#  
+#Use pass completion as performance measure.
+did_Cmp_month_Hm <-felm(`Cmp%` ~ post_Howmany|monthcount + name, data = data)
+summary(did_Cmp_month_Hm)
+#Use  Progress pass as performance measure.
+did_PrgP_month_Hm <-felm(PrgP ~ post_Howmany|monthcount + name, data = data)
+summary(did_PrgP_month_Hm)
+#Use tackles plus int as performance measure
+did_tklint_month_Hm <- felm(`Tkl+Int`~ post_Howmany|monthcount + name, data = data)
+#Use PC as performance measure
+did_PC1_month_Hm <-felm(X_pca.PC1 ~ post_Howmany|monthcount + name, data = data)
+summary(did_PC1_month_Hm)
+did_PC2_month_Hm <-felm(X_pca.PC2 ~ post_Howmany|monthcount + name, data = data)
+summary(did_PC2_month_Hm)
+did_PC3_month_Hm <-felm(X_pca.PC3 ~ post_Howmany|monthcount + name, data = data)
+summary(did_PC3_month_Hm)
+```
+
+```{r club vote intensity}
+###Heterogeneity Exploration###
+#Import club status
+library(readxl)
+club_status <- read_xlsx("club_status(1).xlsx")
+
+cols_to_remove <- c("SDLP","GRN", "PLC", "SNP", "LDM", "ALL", "IND", "DUP", "sdlp", "plc", "all", "ind", "dup")
+club_status_nonzero <- club_status[, !names(club_status) %in% cols_to_remove]
+
+library(gridExtra)
+
+# Create an empty list to store the pie plots
+plot_list <- list()
+par(mar = c(2, 2, 2, 2), mfrow=c(4,5)) # define sub plot area
+colors <- c("tomato",  "lightgreen", "lightgoldenrod1", "pink", "lightskyblue") # define colors
+labels <- c("lab", "grn", "ldm", "con", "rfm") # define lables
+main <- "Voting Distribution" # Title
+for (i in 1:20) {
+  slices <- as.numeric(unlist(club_status_nonzero[i, 6:10]))
+  club <- club_status_nonzero[i, 1]
+  
+  # Create a pie plot using ggplot2
+  votepie <- ggplot(data.frame(labels, slices), aes(x = "", y = slices, fill = labels)) +
+    geom_bar(stat = "identity", width = 1) +
+    coord_polar("y") +
+    labs(title = club, x = "", y = "") +
+    scale_fill_manual(values = colors)
+  
+  # Add the plot to the list
+  plot_list[[i]] <- votepie
+}
+
+# Arrange the pie plots in a grid layout and save as one graph
+combined_votepie <- grid.arrange(grobs = plot_list, ncol = 4)  # 4 columns for 20 plots
+combined_votepie
+```
+
+```{r Heterogeneous Regression}
+#Heterogeneity regression
+hetro_data <- left_join(data, club_status_nonzero, by = "club", relationship = "many-to-many")
+hetero_Cmp_w_MorL <-felm(`Cmp%` ~ post_MorL*eng|week_count + name, data = hetro_data)
+hetero_Cmp_w_MorL_lab <-felm(`Cmp%` ~ post_MorL*lab|week_count + name, data = hetro_data)
+summary(hetero_Cmp_w_MorL)
+
+summary(hetero_Cmp_w_MorL_lab)
+```
+
